@@ -1,0 +1,13 @@
+{
+  "name": "bug-tracer",
+  "version": "1.0.0",
+  "description": "Dependency analyser and bug-matcher for source repositories",
+  "main": "analyzer.js",
+  "scripts": {
+    "start": "node server.js",
+    "analyze": "node analyzer.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
