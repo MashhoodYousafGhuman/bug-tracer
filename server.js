@@ -1,13 +1,37 @@
 'use strict';
 
+require('dotenv').config();
+
 const express  = require('express');
 const path     = require('path');
 const { matcher, scanRepo, trimGraph, tokeniseDescription } = require('./analyzer');
+const { diagnoseWithLLM } = require('./llm');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// POST /api/diagnose
+// Body: { repoPath: string, bugDescription: string, suspects: [...] }
+// Returns: { rootCause, suggestedPatch, suggestedTest }
+// ---------------------------------------------------------------------------
+app.post('/api/diagnose', async (req, res) => {
+  const { bugDescription, suspects } = req.body ?? {};
+
+  if (!bugDescription || !Array.isArray(suspects)) {
+    return res.status(400).json({ error: 'bugDescription and suspects are required.' });
+  }
+
+  try {
+    const result = await diagnoseWithLLM(bugDescription, suspects);
+    res.json(result);
+  } catch (err) {
+    console.error('[bug-tracer] diagnose error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/analyze
@@ -169,6 +193,13 @@ const HTML = /* html */`<!DOCTYPE html>
     .reason      { color: #57606a; font-size: 12px; }
     #mermaid-wrap { overflow-x: auto; }
     .error-msg { color: #b91c1c; padding: 12px 0; }
+    /* AI Diagnosis panel */
+    #ai-diagnosis { margin-bottom: 24px; }
+    .diag-section { margin-bottom: 14px; }
+    .diag-section h3 { font-size: 13px; font-weight: 700; color: #57606a; text-transform: uppercase; letter-spacing: .4px; margin: 0 0 6px; }
+    .diag-content { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    .diag-loading { color: #57606a; font-size: 13px; }
+    .diag-error   { color: #b91c1c; font-size: 13px; }
     .spinner {
       display: inline-block;
       width: 16px; height: 16px;
@@ -233,6 +264,8 @@ const HTML = /* html */`<!DOCTYPE html>
         if (!resp.ok) throw new Error(data.error || resp.statusText);
 
         status.innerHTML = '';
+        window._lastRepoPath = repoPath;
+        window._lastBugDesc  = bugDescription;
         renderResults(data.suspects, data.mermaid, data.graphTrimmed, data.rawNodeCount);
       } catch (err) {
         status.innerHTML = '<span class="error-msg">Error: ' + escHtml(err.message) + '</span>';
@@ -269,6 +302,9 @@ const HTML = /* html */`<!DOCTYPE html>
         html += '</tbody></table></div>';
       }
 
+      // ── AI Diagnosis panel ──────────────────────────────────────────────────
+      html += '<div class="panel" id="ai-diagnosis"><h2>AI Diagnosis</h2><div id="diag-inner"><div class="diag-loading"><span class="spinner"></span>Running AI diagnosis\u2026</div></div></div>';
+
       // ── Mermaid graph panel ─────────────────────────────────────────────────
       const graphSubtitle = graphTrimmed
         ? '<p style="color:#57606a;font-size:12px;margin:0 0 10px">Showing top 30 most-connected nodes of ' + rawNodeCount + ' total (graph trimmed for readability).</p>'
@@ -276,6 +312,11 @@ const HTML = /* html */`<!DOCTYPE html>
       html += '<div class="panel"><h2>Dependency Graph</h2>' + graphSubtitle + '<div id="mermaid-wrap"><div class="mermaid" id="mermaid-graph"></div></div></div>';
 
       out.innerHTML = html;
+
+      // Kick off AI diagnosis after the DOM is populated.
+      if (suspects && suspects.length > 0) {
+        loadDiagnosis(window._lastRepoPath, window._lastBugDesc, suspects);
+      }
 
       // Log the raw Mermaid source so it can be inspected in the browser console
       console.log('[bug-tracer] mermaid source:', mermaidSrc);
@@ -303,6 +344,32 @@ const HTML = /* html */`<!DOCTYPE html>
           });
         }
       }
+    }
+
+    async function loadDiagnosis(repoPath, bugDescription, suspects) {
+      const diag = document.getElementById('diag-inner');
+      if (!diag) return;
+      try {
+        const resp = await fetch('/api/diagnose', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ repoPath, bugDescription, suspects: suspects.slice(0, 5) }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+        diag.innerHTML =
+          diagSection('Root Cause',      data.rootCause) +
+          diagSection('Suggested Patch', data.suggestedPatch) +
+          diagSection('Suggested Test',  data.suggestedTest);
+      } catch (err) {
+        diag.innerHTML = '<div class="diag-error">AI diagnosis unavailable: ' + escHtml(err.message) + '</div>';
+      }
+    }
+
+    function diagSection(heading, text) {
+      return '<div class="diag-section"><h3>' + escHtml(heading) + '</h3>'
+           + '<div class="diag-content">' + escHtml(text || '(no output)') + '</div></div>';
     }
 
     function escHtml(str) {
