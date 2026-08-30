@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const express  = require('express');
+const fs       = require('fs');
 const path     = require('path');
 const { matcher, scanRepo, trimGraph, tokeniseDescription } = require('./analyzer');
 const { diagnoseWithLLM } = require('./llm');
@@ -45,11 +46,19 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(400).json({ error: 'repoPath and bugDescription are required.' });
   }
 
+  if (!bugDescription.trim()) {
+    return res.status(400).json({ error: 'bugDescription must not be blank.' });
+  }
+
   // Resolve relative paths against __dirname (the directory containing server.js),
   // not process.cwd(), so the path is stable regardless of where `npm start` is run.
   const absRepoPath = path.isAbsolute(repoPath)
     ? repoPath
     : path.resolve(__dirname, repoPath);
+
+  if (!fs.existsSync(absRepoPath)) {
+    return res.status(400).json({ error: `repoPath does not exist on disk: ${absRepoPath}` });
+  }
 
   console.log('[bug-tracer] process.cwd()      :', process.cwd());
   console.log('[bug-tracer] __dirname           :', __dirname);
@@ -212,6 +221,23 @@ const HTML = /* html */`<!DOCTYPE html>
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #status { margin-top: 12px; min-height: 20px; color: #57606a; font-size: 13px; }
+    /* Skeleton / shimmer */
+    @keyframes shimmer {
+      0%   { background-position: -600px 0; }
+      100% { background-position:  600px 0; }
+    }
+    .skeleton-line {
+      display: inline-block;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #e5e7eb 25%, #f0f2f4 50%, #e5e7eb 75%);
+      background-size: 600px 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+    }
+    .sk-rank  { width: 18px;  height: 12px; }
+    .sk-file  { width: 220px; height: 12px; }
+    .sk-score { width: 48px;  height: 18px; border-radius: 10px; }
+    .sk-reason-a { width: 180px; height: 11px; margin-bottom: 4px; }
+    .sk-reason-b { width: 120px; height: 11px; }
   </style>
 </head>
 <body>
@@ -238,6 +264,27 @@ const HTML = /* html */`<!DOCTYPE html>
       mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
     }
 
+    function skRow(i) {
+      return '<tr>'
+        + '<td class="rank"><span class="skeleton-line sk-rank"></span></td>'
+        + '<td><span class="skeleton-line sk-file"></span></td>'
+        + '<td><span class="skeleton-line sk-score"></span></td>'
+        + '<td><span class="skeleton-line sk-reason-a"></span><br><span class="skeleton-line sk-reason-b"></span></td>'
+        + '</tr>';
+    }
+
+    function buildSkeleton() {
+      let rows = '';
+      for (let i = 0; i < 6; i++) rows += skRow(i);
+      return '<div class="panel">'
+        + '<h2>Suspect Files</h2>'
+        + '<table>'
+        + '<thead><tr><th class="rank">#</th><th>File</th><th>Score</th><th>Reason</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody>'
+        + '</table>'
+        + '</div>';
+    }
+
     async function analyze() {
       const repoPath      = document.getElementById('repoPath').value.trim();
       const bugDescription = document.getElementById('bugDesc').value.trim();
@@ -251,8 +298,8 @@ const HTML = /* html */`<!DOCTYPE html>
       }
 
       btn.disabled = true;
-      status.innerHTML = '<span class="spinner"></span>Analysing…';
-      out.innerHTML = '';
+      status.innerHTML = '';
+      out.innerHTML = buildSkeleton();
 
       try {
         const resp = await fetch('/api/analyze', {
