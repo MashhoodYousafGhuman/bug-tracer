@@ -1,5 +1,8 @@
 'use strict';
 
+const fs   = require('fs');
+const path = require('path');
+
 /**
  * diagnoseWithLLM
  *
@@ -189,11 +192,28 @@ async function tryGenerate(baseUrl, iamToken, projectId, modelId, prompt) {
 }
 
 /**
+ * Reads a file from disk (absolute or relative to cwd).  Returns the content
+ * as a string, or null if it cannot be read.
+ * @param {string} filePath
+ * @returns {string|null}
+ */
+function tryReadFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {string} bugDescription
  * @param {Array<{file: string, score: number, reason: string}>} suspects  top suspects (≤5)
+ * @param {string} [repoPath]  optional repo root; when provided the top 3-5
+ *                             suspects' full file contents are embedded in the
+ *                             prompt for grounded analysis.
  * @returns {Promise<{rootCause: string, suggestedPatch: string, suggestedTest: string}>}
  */
-async function diagnoseWithLLM(bugDescription, suspects) {
+async function diagnoseWithLLM(bugDescription, suspects, repoPath) {
   const apiKey    = process.env.WATSONX_API_KEY;
   const projectId = process.env.WATSONX_PROJECT_ID;
   const baseUrl   = (process.env.WATSONX_URL || '').replace(/\/$/, '');
@@ -204,27 +224,66 @@ async function diagnoseWithLLM(bugDescription, suspects) {
     );
   }
 
-  // Build a concise file list for the prompt.
-  const fileList = suspects
-    .slice(0, 5)
-    .map((s, i) => `  ${i + 1}. ${s.file} (score ${s.score.toFixed(3)}) – ${s.reason}`)
-    .join('\n');
+  // ── Embed full file contents for the top 3-5 suspects ─────────────────────
+  // This gives the model real code to ground its analysis in, rather than
+  // relying solely on file names and scores.
+  const TOP_N = 5;
+  const topSuspects = suspects.slice(0, TOP_N);
 
-  const prompt = `You are an expert software debugger. Given the following bug description and the top suspect files identified by static analysis, provide a structured diagnosis.
+  const fileSnippets = [];
+  for (const suspect of topSuspects) {
+    let content = null;
+    if (repoPath) {
+      const absPath = path.isAbsolute(suspect.file)
+        ? suspect.file
+        : path.join(repoPath, suspect.file);
+      content = tryReadFile(absPath);
+    }
+    if (!content) {
+      // Fall back to a header-only entry when content is unavailable
+      fileSnippets.push(
+        `=== ${suspect.file} (score ${suspect.score.toFixed(3)}) ===\n` +
+        `[content unavailable — reason: ${suspect.reason}]\n`
+      );
+    } else {
+      // Cap at 300 lines to stay within model token limits
+      const lines = content.split('\n');
+      const capped = lines.slice(0, 300);
+      const truncNote = lines.length > 300
+        ? `\n… (truncated — ${lines.length - 300} more lines)`
+        : '';
+      fileSnippets.push(
+        `=== ${suspect.file} (score ${suspect.score.toFixed(3)}, reason: ${suspect.reason}) ===\n` +
+        capped.map((l, i) => `${String(i + 1).padStart(4)} | ${l}`).join('\n') +
+        truncNote
+      );
+    }
+  }
+
+  const fileBlock = fileSnippets.join('\n\n');
+
+  const prompt = `You are an expert software debugger performing a grounded root-cause analysis.
+
+STRICT RULES — follow these exactly:
+1. Base your analysis ONLY on the actual code shown below. Do not speculate about code you have not seen.
+2. When referencing a specific problem, quote the EXACT line(s) from the code using the format:
+   FILE path/to/file.js LINE 42: <exact code>
+3. If you are uncertain, say so explicitly. Never fabricate line numbers or code.
+4. Do not suggest fixes for code that is not shown.
 
 Bug description:
 ${bugDescription}
 
-Top suspect files:
-${fileList}
+Top suspect files with full content:
+${fileBlock}
 
 Respond in exactly this format (keep each section to 2-4 sentences or a short code block):
 
 ROOT CAUSE:
-<one paragraph explaining the most likely root cause>
+<one paragraph citing specific lines from the code above>
 
 SUGGESTED PATCH:
-<concrete code change or steps to fix the bug>
+<concrete code change referencing real line numbers and file names>
 
 SUGGESTED TEST:
 <a short test case or test strategy to verify the fix>`;

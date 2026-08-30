@@ -1069,6 +1069,209 @@ async function matcher(repoPath, bugDescription) {
 }
 
 // ---------------------------------------------------------------------------
+// Semantic fallback ranking via watsonx.ai
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a compact repo summary (one line per file: relative path + first 2
+ * function/class names), sends it together with the bug description to
+ * watsonx.ai, and asks the model to return the top 5 most likely relevant
+ * files with a one-line reason each.
+ *
+ * Returns an array of suspect objects in the same shape as matcher():
+ *   { file, score, reason, keywords: [] }
+ *
+ * The score is assigned 0.04 (just below the keyword-fallback threshold of
+ * 0.05) so semantic results never silently override strong keyword matches.
+ *
+ * Silently returns [] on any network or parse failure.
+ *
+ * @param {string} repoPath
+ * @param {string} bugDescription
+ * @returns {Promise<Array<{file:string, score:number, reason:string, keywords:string[]}>>}
+ */
+async function semanticRank(repoPath, bugDescription) {
+  const apiKey    = process.env.WATSONX_API_KEY;
+  const projectId = process.env.WATSONX_PROJECT_ID;
+  const baseUrl   = (process.env.WATSONX_URL || '').replace(/\/$/, '');
+
+  if (!apiKey || !projectId || !baseUrl) return [];
+
+  // ── Build a compact file summary (filename + first 2 symbol names) ────────
+  const absRepo = path.resolve(repoPath);
+  const fileSummaries = [];
+  for (const absPath of walkDir(absRepo)) {
+    const relPath = path.relative(absRepo, absPath).replace(/\\/g, '/');
+    const content = tryRead(absPath) || '';
+    const names   = extractFunctionNames(content).slice(0, 2);
+    const namesStr = names.length > 0 ? ` [${names.join(', ')}]` : '';
+    fileSummaries.push(`${relPath}${namesStr}`);
+  }
+
+  if (fileSummaries.length === 0) return [];
+
+  const fileListText = fileSummaries.join('\n');
+
+  const prompt =
+`You are a senior engineer triaging a bug report. Below is a list of files in the repository with their first few symbol names, followed by the bug description. Your task is to identify the top 5 files most likely to contain or be relevant to this bug.
+
+Repository files:
+${fileListText}
+
+Bug description:
+${bugDescription}
+
+IMPORTANT: Only return files that appear EXACTLY as listed above. Do not invent or guess file names.
+Respond ONLY with a JSON array of exactly up to 5 objects, no prose, no markdown fences:
+[
+  {"file": "<exact relative path>", "reason": "<one-line reason>"},
+  ...
+]`;
+
+  // ── Obtain IAM token ──────────────────────────────────────────────────────
+  let iamToken;
+  try {
+    iamToken = await new Promise((resolve, reject) => {
+      const payload =
+        'grant_type=urn%3Aibm%3Aparams%3Aoauth%3Agrant-type%3Aapikey&apikey=' +
+        encodeURIComponent(apiKey);
+      const https = require('https');
+      const options = {
+        hostname: 'iam.cloud.ibm.com',
+        port:     443,
+        path:     '/identity/token',
+        method:   'POST',
+        headers: {
+          'Content-Type':   'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(payload),
+          'Accept':         'application/json',
+        },
+      };
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try { resolve(JSON.parse(data).access_token); }
+            catch (e) { reject(e); }
+          } else {
+            reject(new Error('IAM ' + res.statusCode));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+  } catch (err) {
+    console.warn('[bug-tracer] semanticRank: IAM token failed, skipping –', err.message);
+    return [];
+  }
+
+  // ── Call watsonx.ai text generation ──────────────────────────────────────
+  const modelsToTry = [
+    'ibm/granite-4-h-small',
+    'meta-llama/llama-3-3-70b-instruct',
+  ];
+
+  let rawText = null;
+  const endpoint = `${baseUrl}/ml/v1/text/generation?version=2023-05-29`;
+  const https = require('https');
+
+  for (const modelId of modelsToTry) {
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const payload = JSON.stringify({
+          model_id:   modelId,
+          project_id: projectId,
+          input:      prompt,
+          parameters: {
+            decoding_method: 'greedy',
+            max_new_tokens:  400,
+            min_new_tokens:  10,
+            stop_sequences:  [],
+          },
+        });
+        const parsed  = new (require('url').URL)(endpoint);
+        const options = {
+          hostname: parsed.hostname,
+          port:     parsed.port || 443,
+          path:     parsed.pathname + parsed.search,
+          method:   'POST',
+          headers: {
+            'Content-Type':   'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            'Authorization':  'Bearer ' + iamToken,
+            'Accept':         'application/json',
+          },
+        };
+        const req = https.request(options, (res) => {
+          let data = '';
+          res.on('data', (c) => { data += c; });
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              try { resolve(JSON.parse(data)); }
+              catch (e) { reject(e); }
+            } else {
+              reject(new Error('HTTP ' + res.statusCode));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+      });
+      rawText = result?.results?.[0]?.generated_text ?? null;
+      if (rawText) break;
+    } catch (err) {
+      console.warn(`[bug-tracer] semanticRank: model "${modelId}" failed –`, err.message);
+    }
+  }
+
+  if (!rawText) {
+    console.warn('[bug-tracer] semanticRank: no model returned text, skipping semantic fallback');
+    return [];
+  }
+
+  // ── Parse the JSON array from the model output ────────────────────────────
+  let parsed;
+  try {
+    // Strip any accidental markdown fences the model might add
+    const cleaned = rawText.replace(/```(?:json)?/gi, '').trim();
+    // Find first '[' ... last ']'
+    const start = cleaned.indexOf('[');
+    const end   = cleaned.lastIndexOf(']');
+    if (start === -1 || end === -1) throw new Error('no JSON array found');
+    parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (!Array.isArray(parsed)) throw new Error('parsed value is not an array');
+  } catch (err) {
+    console.warn('[bug-tracer] semanticRank: failed to parse LLM response –', err.message);
+    return [];
+  }
+
+  // Build a set of valid repo file paths for validation
+  const validPaths = new Set(fileSummaries.map((l) => l.split(' [')[0]));
+
+  const semanticSuspects = [];
+  for (const item of parsed) {
+    if (!item || typeof item.file !== 'string' || typeof item.reason !== 'string') continue;
+    const filePath = item.file.trim().replace(/\\/g, '/');
+    // Only accept files that actually exist in the repo
+    if (!validPaths.has(filePath)) continue;
+    semanticSuspects.push({
+      file:     filePath,
+      score:    0.04,
+      reason:   'semantic match: ' + item.reason.trim(),
+      keywords: [],
+    });
+    if (semanticSuspects.length >= 5) break;
+  }
+
+  console.log('[bug-tracer] semanticRank: added', semanticSuspects.length, 'semantic suspects');
+  return semanticSuspects;
+}
+
+// ---------------------------------------------------------------------------
 // CLI entry-point
 // ---------------------------------------------------------------------------
 
@@ -1227,5 +1430,6 @@ module.exports = {
   hotspots,
   walkthrough,
   matcher,
+  semanticRank,
   tokeniseDescription,
 };

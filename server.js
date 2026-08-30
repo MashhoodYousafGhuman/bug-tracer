@@ -5,7 +5,7 @@ require('dotenv').config();
 const express  = require('express');
 const fs       = require('fs');
 const path     = require('path');
-const { matcher, scanRepo, trimGraph, tokeniseDescription } = require('./analyzer');
+const { matcher, scanRepo, trimGraph, tokeniseDescription, semanticRank } = require('./analyzer');
 const { diagnoseWithLLM } = require('./llm');
 
 const app  = express();
@@ -19,14 +19,22 @@ app.use(express.json());
 // Returns: { rootCause, suggestedPatch, suggestedTest }
 // ---------------------------------------------------------------------------
 app.post('/api/diagnose', async (req, res) => {
-  const { bugDescription, suspects } = req.body ?? {};
+  const { repoPath, bugDescription, suspects } = req.body ?? {};
 
   if (!bugDescription || !Array.isArray(suspects)) {
     return res.status(400).json({ error: 'bugDescription and suspects are required.' });
   }
 
+  // Resolve repoPath (if provided) so diagnoseWithLLM can read file contents.
+  let absRepoPath;
+  if (repoPath) {
+    absRepoPath = path.isAbsolute(repoPath)
+      ? repoPath
+      : path.resolve(__dirname, repoPath);
+  }
+
   try {
-    const result = await diagnoseWithLLM(bugDescription, suspects);
+    const result = await diagnoseWithLLM(bugDescription, suspects, absRepoPath);
     res.json(result);
   } catch (err) {
     console.error('[bug-tracer] diagnose error:', err);
@@ -69,15 +77,41 @@ app.post('/api/analyze', async (req, res) => {
   console.log('[bug-tracer] repoPath (resolved) :', absRepoPath);
 
   try {
-    const [suspects, rawMermaid] = await Promise.all([
+    const [keywordSuspects, rawMermaid] = await Promise.all([
       matcher(absRepoPath, bugDescription),
       Promise.resolve(scanRepo(absRepoPath)),
     ]);
 
+    // ── Semantic fallback: if keyword signal is weak, ask watsonx for ranking ─
+    // "Weak" = no suspects at all, or the top suspect's composite score is below
+    // 0.05, meaning no keyword in the bug description matched any file path or
+    // function name with meaningful weight.
+    let suspects = keywordSuspects;
+    const topScore = keywordSuspects.length > 0 ? keywordSuspects[0].score : 0;
+    if (topScore < 0.05) {
+      console.log(
+        '[bug-tracer] keyword signal weak (top score', topScore.toFixed(4) + '),',
+        'invoking semanticRank fallback…'
+      );
+      try {
+        const semanticSuspects = await semanticRank(absRepoPath, bugDescription);
+        if (semanticSuspects.length > 0) {
+          // Merge: keep keyword suspects that aren't already in the semantic list,
+          // then append semantic results, deduplicated by file path.
+          const seen = new Set(semanticSuspects.map((s) => s.file));
+          const extra = keywordSuspects.filter((s) => !seen.has(s.file));
+          suspects = [...semanticSuspects, ...extra];
+        }
+      } catch (semErr) {
+        // Never let the semantic fallback break the response
+        console.warn('[bug-tracer] semanticRank threw unexpectedly:', semErr.message);
+      }
+    }
+
     // Keywords are attached to every suspect entry by matcher(); fall back to
     // tokenising the description directly in case the suspects list is empty.
-    const keywords = suspects.length > 0
-      ? suspects[0].keywords
+    const keywords = keywordSuspects.length > 0
+      ? keywordSuspects[0].keywords
       : tokeniseDescription(bugDescription);
 
     const rawNodeCount = rawMermaid.split('\n').length - 1;
