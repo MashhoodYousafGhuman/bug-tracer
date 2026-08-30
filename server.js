@@ -219,7 +219,23 @@ const HTML = /* html */`<!DOCTYPE html>
     .sidebar-history {
       flex: 1;
       overflow-y: auto;
-      padding: 0 8px 12px;
+      padding: 0 8px 4px;
+    }
+    .sidebar-clear-btn {
+      flex-shrink: 0;
+      padding: 8px 18px 12px;
+      text-align: center;
+    }
+    .sidebar-clear-btn a {
+      font-size: 11px;
+      color: #3d3530;
+      text-decoration: none;
+      cursor: pointer;
+      transition: color .15s ease;
+      letter-spacing: .1px;
+    }
+    .sidebar-clear-btn a:hover {
+      color: #e07060;
     }
     .sidebar-history::-webkit-scrollbar { width: 4px; }
     .sidebar-history::-webkit-scrollbar-track { background: transparent; }
@@ -490,8 +506,130 @@ const HTML = /* html */`<!DOCTYPE html>
     .file-name   { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; color: #c2693e; word-break: break-all; }
     .reason      { color: #6b6058; font-size: 12px; }
 
-    /* ── Mermaid graph ──────────────────────────────────────────────────── */
-    #mermaid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* ── Dependency graph button ────────────────────────────────────────── */
+    .graph-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 20px;
+      background: transparent;
+      border: 1px solid #3a3028;
+      border-radius: 8px;
+      color: #c9bfb3;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: .1px;
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .graph-btn:hover {
+      background: #271f18;
+      border-color: #c2693e;
+      color: #f0e8de;
+    }
+    .graph-btn-icon { font-size: 15px; }
+
+    /* ── Graph modal overlay ────────────────────────────────────────────── */
+    .graph-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.78);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+    .graph-modal-overlay.open { display: flex; }
+    .graph-modal {
+      position: relative;
+      background: #1a1713;
+      border: 1px solid #3a3028;
+      border-radius: 14px;
+      width: calc(100vw - 48px);
+      height: calc(100vh - 48px);
+      max-width: 1400px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .graph-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid #2e2720;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+    .graph-modal-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #7a6e65;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+    }
+    .graph-modal-subtitle {
+      font-size: 12px;
+      color: #5a5248;
+      margin-left: 4px;
+    }
+    .graph-modal-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .graph-ctrl-btn {
+      width: 32px; height: 32px;
+      background: #252119;
+      border: 1px solid #3a3028;
+      border-radius: 7px;
+      color: #c9bfb3;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s ease, border-color .12s ease, color .12s ease;
+      flex-shrink: 0;
+    }
+    .graph-ctrl-btn:hover { background: #302820; border-color: #c2693e; color: #f0e8de; }
+    .graph-reset-btn {
+      padding: 0 12px;
+      width: auto;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .graph-close-btn {
+      font-size: 18px;
+      margin-left: 4px;
+    }
+    .graph-modal-body {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      cursor: grab;
+    }
+    .graph-modal-body.dragging { cursor: grabbing; }
+    .graph-pan-container {
+      position: absolute;
+      top: 0; left: 0;
+      transform-origin: 0 0;
+      /* transform set via JS */
+    }
+    #modal-mermaid-graph svg {
+      display: block;
+      max-width: none !important;
+    }
+    #modal-mermaid-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #5a5248;
+      font-size: 13px;
+      pointer-events: none;
+    }
 
     /* ── AI Diagnosis panel ─────────────────────────────────────────────── */
     #ai-diagnosis { margin-bottom: 16px; }
@@ -603,6 +741,9 @@ const HTML = /* html */`<!DOCTYPE html>
       <div class="sidebar-history" id="sessionList">
         <div class="sidebar-empty" id="noSessions">No sessions yet.<br>Run an analysis to start.</div>
       </div>
+      <div class="sidebar-clear-btn">
+        <a onclick="clearHistory()">Clear History</a>
+      </div>
     </aside>
 
     <!-- ── Main area ───────────────────────────────────────────────────── -->
@@ -653,6 +794,30 @@ const HTML = /* html */`<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- ── Dependency graph full-screen modal ──────────────────────────────── -->
+  <div class="graph-modal-overlay" id="graph-modal-overlay" onclick="closeGraphModal(event)">
+    <div class="graph-modal" onclick="event.stopPropagation()">
+      <div class="graph-modal-header">
+        <div>
+          <span class="graph-modal-title">Dependency Graph</span>
+          <span class="graph-modal-subtitle" id="graph-modal-subtitle"></span>
+        </div>
+        <div class="graph-modal-controls">
+          <button class="graph-ctrl-btn" onclick="_zoomBy(0.2)" title="Zoom in">+</button>
+          <button class="graph-ctrl-btn" onclick="_zoomBy(-0.2)" title="Zoom out">&minus;</button>
+          <button class="graph-ctrl-btn graph-reset-btn" onclick="_resetGraphView()" title="Reset view">Reset view</button>
+          <button class="graph-ctrl-btn graph-close-btn" onclick="closeGraphModal()" title="Close">&times;</button>
+        </div>
+      </div>
+      <div class="graph-modal-body" id="graph-modal-body">
+        <div class="graph-pan-container" id="graph-pan-container">
+          <div id="modal-mermaid-graph"></div>
+        </div>
+        <div id="modal-mermaid-status"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ── Mermaid init ────────────────────────────────────────────────────────
     // The Mermaid CDN script loads with defer, so it is guaranteed to have
@@ -663,9 +828,33 @@ const HTML = /* html */`<!DOCTYPE html>
     }
 
     // ── Session store ───────────────────────────────────────────────────────
-    // In-memory only — resets on page reload.
     var sessions = [];
     var activeSessionId = null;
+
+    // ── localStorage helpers ─────────────────────────────────────────────────
+    var _STORAGE_KEY = 'bugTracerSessions';
+
+    function saveSessionsToStorage() {
+      try {
+        localStorage.setItem(_STORAGE_KEY, JSON.stringify(sessions));
+      } catch (e) {
+        // Storage full or unavailable (e.g. private browsing) — fail silently.
+      }
+    }
+
+    function loadSessionsFromStorage() {
+      try {
+        var raw = localStorage.getItem(_STORAGE_KEY);
+        if (!raw) return;
+        var stored = JSON.parse(raw);
+        if (!Array.isArray(stored) || stored.length === 0) return;
+        sessions = stored;
+        renderSessionList();
+        // Do NOT auto-select any session or render results — sidebar only.
+      } catch (e) {
+        // Corrupt data or unavailable storage — start fresh.
+      }
+    }
 
     function sessionLabel(bugDescription) {
       var s = (bugDescription || '').trim();
@@ -696,6 +885,7 @@ const HTML = /* html */`<!DOCTYPE html>
       sessions.push(session);
       activeSessionId = id;
       renderSessionList();
+      saveSessionsToStorage();
       return session;
     }
 
@@ -854,45 +1044,34 @@ const HTML = /* html */`<!DOCTYPE html>
         html += '<div class="panel" id="ai-diagnosis"><h2>AI Diagnosis</h2><p style="color:#5a5248;font-size:13px;margin:0">No suspects found \u2014 try a more descriptive bug report.</p></div>';
       }
 
-      // ── Mermaid graph panel ───────────────────────────────────────────────
-      var graphSubtitle = graphTrimmed
-        ? '<p style="color:#5a5248;font-size:12px;margin:0 0 12px">Showing top 30 most-connected nodes of ' + rawNodeCount + ' total (graph trimmed for readability).</p>'
+      // ── Mermaid graph panel (button → modal) ─────────────────────────────
+      var graphSubtitleText = graphTrimmed
+        ? 'Showing top 30 most-connected nodes of ' + rawNodeCount + ' total'
         : '';
-      html += '<div class="panel"><h2>Dependency Graph</h2>' + graphSubtitle + '<div id="mermaid-wrap"><div class="mermaid" id="mermaid-graph"></div></div></div>';
+      // Store mermaid source + subtitle on a data attribute so the modal can
+      // access them without a closure leak across session loads.
+      html += '<div class="panel">'
+            + '<h2>Dependency Graph</h2>'
+            + (graphSubtitleText ? '<p style="color:#5a5248;font-size:12px;margin:0 0 14px">' + escHtml(graphSubtitleText) + ' (graph trimmed for readability).</p>' : '')
+            + '<button class="graph-btn" id="view-graph-btn" onclick="openGraphModal()">'
+            + '<span class="graph-btn-icon">&#9906;</span> View Dependency Graph'
+            + '</button>'
+            + '</div>';
 
       out.innerHTML = html;
+
+      // Store the current mermaid source so the modal renderer can pick it up.
+      // Use a module-level variable so loadSession re-assignments work correctly.
+      _currentMermaidSrc      = mermaidSrc || '';
+      _currentGraphSubtitle   = graphSubtitleText;
+
+      // Log the raw Mermaid source so it can be inspected in the browser console
+      console.log('[bug-tracer] mermaid source:', mermaidSrc);
 
       // Kick off AI diagnosis only for a fresh analysis (session passed and no
       // prior diagnosis cached on it).
       if (suspects && suspects.length > 0 && session && !session.diagnosis) {
         loadDiagnosis(session.repoPath, session.bugDescription, suspects, session);
-      }
-
-      // Log the raw Mermaid source so it can be inspected in the browser console
-      console.log('[bug-tracer] mermaid source:', mermaidSrc);
-
-      // Render mermaid after injection.
-      // Use a unique id each call so Mermaid v10 never finds a stale SVG in the DOM.
-      var el = document.getElementById('mermaid-graph');
-      if (el && mermaidSrc) {
-        var renderId = 'mermaid-svg-' + Date.now();
-        // Remove any leftover hidden SVG Mermaid may have appended to <body>
-        var stale = document.getElementById('mermaid-svg');
-        if (stale) stale.remove();
-
-        if (typeof mermaid === 'undefined') {
-          el.textContent = 'Mermaid library unavailable (CDN load failed \u2014 check network).';
-        } else {
-          mermaid.render(renderId, mermaidSrc).then(function(result) {
-            el.innerHTML = result.svg;
-          }).catch(function(e) {
-            // Mermaid v10 sometimes throws a plain string, not an Error object.
-            var msg = (e instanceof Error) ? e.message : String(e);
-            console.error('[bug-tracer] mermaid render error (full):', e);
-            console.error('[bug-tracer] mermaid source that failed:\\n', mermaidSrc);
-            el.textContent = 'Graph render error: ' + msg;
-          });
-        }
       }
     }
 
@@ -913,6 +1092,7 @@ const HTML = /* html */`<!DOCTYPE html>
         // another API call when the user clicks the session in the sidebar.
         if (session) {
           session.diagnosis = { rootCause: data.rootCause, suggestedPatch: data.suggestedPatch, suggestedTest: data.suggestedTest };
+          saveSessionsToStorage();
         }
 
         // Only update the DOM if this session is still the visible one.
@@ -929,6 +1109,190 @@ const HTML = /* html */`<!DOCTYPE html>
           diagErr.innerHTML = '<div class="diag-error">AI diagnosis unavailable: ' + escHtml(err.message) + '</div>';
         }
       }
+    }
+
+    // ── Graph modal state ─────────────────────────────────────────────────────
+    var _currentMermaidSrc    = '';
+    var _currentGraphSubtitle = '';
+    var _graphScale           = 1;
+    var _graphOffsetX         = 0;
+    var _graphOffsetY         = 0;
+    var _graphRenderedSrc     = '';   // track what is already rendered to avoid double-render
+
+    var _MIN_SCALE = 0.1;
+    var _MAX_SCALE = 15;
+
+    function _applyTransform() {
+      var c = document.getElementById('graph-pan-container');
+      if (c) c.style.transform = 'translate(' + _graphOffsetX + 'px,' + _graphOffsetY + 'px) scale(' + _graphScale + ')';
+    }
+
+    function openGraphModal() {
+      var overlay = document.getElementById('graph-modal-overlay');
+      if (!overlay) return;
+
+      // Update subtitle text
+      var sub = document.getElementById('graph-modal-subtitle');
+      if (sub) sub.textContent = _currentGraphSubtitle ? _currentGraphSubtitle + ' (graph trimmed for readability).' : '';
+
+      overlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+
+      if (_graphRenderedSrc !== _currentMermaidSrc) {
+        // New source — render first, then fit once the SVG is in the DOM
+        _renderModalGraph();
+      } else {
+        // Already rendered — fit immediately (modal body now has a layout)
+        _fitGraphView();
+      }
+    }
+
+    function closeGraphModal() {
+      var overlay = document.getElementById('graph-modal-overlay');
+      if (overlay) overlay.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    // Compute a scale that fits the rendered SVG inside the modal body at ~90%
+    // of the available area, then centre it.  Falls back to scale=1 if the SVG
+    // or body dimensions are not yet available.
+    function _fitGraphView() {
+      var body = document.getElementById('graph-modal-body');
+      var svg  = document.querySelector('#modal-mermaid-graph svg');
+      if (!body || !svg) {
+        _graphScale   = 1;
+        _graphOffsetX = 0;
+        _graphOffsetY = 0;
+        _applyTransform();
+        return;
+      }
+      var bodyW = body.clientWidth;
+      var bodyH = body.clientHeight;
+      // Prefer the SVG's intrinsic dimensions from its viewBox / width+height
+      // attributes; fall back to the bounding rect (which may be scaled already).
+      var svgW = parseFloat(svg.getAttribute('width'))  || svg.getBoundingClientRect().width  || bodyW;
+      var svgH = parseFloat(svg.getAttribute('height')) || svg.getBoundingClientRect().height || bodyH;
+      var fitScale = Math.min(bodyW / svgW, bodyH / svgH) * 0.9;
+      fitScale = Math.min(_MAX_SCALE, Math.max(_MIN_SCALE, fitScale));
+      // Centre the scaled diagram in the modal body
+      var offsetX = (bodyW - svgW * fitScale) / 2;
+      var offsetY = (bodyH - svgH * fitScale) / 2;
+      _graphScale   = fitScale;
+      _graphOffsetX = offsetX;
+      _graphOffsetY = offsetY;
+      _applyTransform();
+    }
+
+    function _resetGraphView() {
+      _fitGraphView();
+    }
+
+    function _zoomBy(delta) {
+      _graphScale = Math.min(_MAX_SCALE, Math.max(_MIN_SCALE, _graphScale + delta));
+      _applyTransform();
+    }
+
+    function _renderModalGraph() {
+      var el     = document.getElementById('modal-mermaid-graph');
+      var status = document.getElementById('modal-mermaid-status');
+      if (!el) return;
+
+      if (!_currentMermaidSrc) {
+        if (status) status.textContent = 'No graph data available.';
+        return;
+      }
+
+      if (status) status.textContent = 'Rendering\u2026';
+      el.innerHTML = '';
+
+      // Use a unique id each call so Mermaid v10 never finds a stale SVG in the DOM.
+      var renderId = 'mermaid-svg-' + Date.now();
+      // Remove any leftover hidden SVG Mermaid may have appended to <body>
+      var stale = document.getElementById(renderId);
+      if (stale) stale.remove();
+
+      if (typeof mermaid === 'undefined') {
+        if (status) status.textContent = '';
+        el.textContent = 'Mermaid library unavailable (CDN load failed \u2014 check network).';
+        _graphRenderedSrc = '';
+        return;
+      }
+
+      mermaid.render(renderId, _currentMermaidSrc).then(function(result) {
+        el.innerHTML = result.svg;
+        if (status) status.textContent = '';
+        _graphRenderedSrc = _currentMermaidSrc;
+        // Fit the newly rendered SVG into the visible modal area
+        _fitGraphView();
+      }).catch(function(e) {
+        // Mermaid v10 sometimes throws a plain string, not an Error object.
+        var msg = (e instanceof Error) ? e.message : String(e);
+        console.error('[bug-tracer] mermaid render error (full):', e);
+        console.error('[bug-tracer] mermaid source that failed:\\n', _currentMermaidSrc);
+        if (status) status.textContent = '';
+        el.textContent = 'Graph render error: ' + msg;
+        _graphRenderedSrc = '';
+      });
+    }
+
+    // ── Graph modal pan (drag) ────────────────────────────────────────────────
+    (function() {
+      var dragging = false;
+      var startX = 0, startY = 0;
+      var startOffX = 0, startOffY = 0;
+
+      function onMouseDown(e) {
+        if (e.button !== 0) return;
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        startOffX = _graphOffsetX; startOffY = _graphOffsetY;
+        var body = document.getElementById('graph-modal-body');
+        if (body) body.classList.add('dragging');
+        e.preventDefault();
+      }
+      function onMouseMove(e) {
+        if (!dragging) return;
+        _graphOffsetX = startOffX + (e.clientX - startX);
+        _graphOffsetY = startOffY + (e.clientY - startY);
+        _applyTransform();
+      }
+      function onMouseUp() {
+        if (!dragging) return;
+        dragging = false;
+        var body = document.getElementById('graph-modal-body');
+        if (body) body.classList.remove('dragging');
+      }
+      // Restore sessions from localStorage before anything else.
+      document.addEventListener('DOMContentLoaded', function() {
+        loadSessionsFromStorage();
+      });
+
+      // Attach once after DOM is ready
+      document.addEventListener('DOMContentLoaded', function() {
+        var body = document.getElementById('graph-modal-body');
+        if (!body) return;
+        body.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        // Mouse-wheel zoom (zoom toward the centre of the viewport for simplicity)
+        body.addEventListener('wheel', function(e) {
+          e.preventDefault();
+          var delta = e.deltaY < 0 ? 0.1 : -0.1;
+          _zoomBy(delta);
+        }, { passive: false });
+      });
+    })();
+
+    // ── Clear history ────────────────────────────────────────────────────────
+    function clearHistory() {
+      if (!confirm('Clear all session history? This cannot be undone.')) return;
+      sessions = [];
+      activeSessionId = null;
+      try { localStorage.removeItem(_STORAGE_KEY); } catch (e) { /* unavailable — ignore */ }
+      renderSessionList();
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('status').innerHTML = '';
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
