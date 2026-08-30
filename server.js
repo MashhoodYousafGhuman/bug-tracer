@@ -118,101 +118,259 @@ const HTML = /* html */`<!DOCTYPE html>
   <title>Bug Tracer</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
   <style>
+    /* ── Reset & base ─────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
       font-size: 14px;
       line-height: 1.6;
-      background: #f7f8fa;
+      background: #f0f2f5;
       color: #1f2328;
     }
-    header {
-      background: #1f2328;
+
+    /* ── Top nav bar ──────────────────────────────────────────────────────── */
+    .nav-bar {
+      background: #0f1117;
       color: #fff;
-      padding: 14px 24px;
-      font-size: 17px;
-      font-weight: 600;
-      letter-spacing: .3px;
+      padding: 0 28px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: .2px;
+      border-bottom: 1px solid #1e2230;
     }
+    .nav-logo {
+      width: 26px; height: 26px;
+      background: #3b82d4;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    /* ── Hero section ─────────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, #0f1117 0%, #1a2236 100%);
+      color: #fff;
+      padding: 52px 28px 48px;
+      text-align: center;
+      border-bottom: 1px solid #1e2230;
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(24px, 4vw, 34px);
+      font-weight: 800;
+      letter-spacing: -.5px;
+      line-height: 1.2;
+    }
+    .hero h1 span { color: #60a5fa; }
+    .hero p {
+      margin: 0 auto 20px;
+      max-width: 520px;
+      color: #a0aec0;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .lang-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      color: #cbd5e1;
+      letter-spacing: .2px;
+    }
+    .lang-badge span { color: #93c5fd; font-weight: 600; }
+
+    /* ── Main content ─────────────────────────────────────────────────────── */
     main {
-      max-width: 860px;
-      margin: 28px auto;
-      padding: 0 20px;
+      max-width: 880px;
+      margin: 36px auto;
+      padding: 0 24px;
     }
-    label { display: block; font-weight: 600; margin-bottom: 4px; }
-    .field { margin-bottom: 16px; }
+
+    /* ── Input form card ──────────────────────────────────────────────────── */
+    .form-card {
+      background: #fff;
+      border: 1px solid #e2e5ea;
+      border-radius: 12px;
+      padding: 28px 28px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+      margin-bottom: 8px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      font-size: 13px;
+      color: #374151;
+      margin-bottom: 6px;
+      letter-spacing: .1px;
+    }
+    .field { margin-bottom: 18px; }
+    .field:last-of-type { margin-bottom: 0; }
     input[type="text"], textarea {
       width: 100%;
-      padding: 9px 12px;
-      border: 1px solid #d0d7de;
-      border-radius: 6px;
+      padding: 10px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
       font-family: inherit;
       font-size: 14px;
       background: #fff;
+      color: #1f2328;
       outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
     }
-    input[type="text"]:focus, textarea:focus { border-color: #3b82d4; }
-    textarea { min-height: 90px; resize: vertical; }
-    button {
-      padding: 9px 22px;
-      background: #3b82d4;
+    input[type="text"]:focus, textarea:focus {
+      border-color: #3b82d4;
+      box-shadow: 0 0 0 3px rgba(59,130,212,.12);
+    }
+    textarea { min-height: 96px; resize: vertical; }
+
+    /* ── Form footer row ──────────────────────────────────────────────────── */
+    .form-footer {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    button#analyzeBtn {
+      padding: 10px 28px;
+      background: #2563eb;
       color: #fff;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
+      letter-spacing: .2px;
+      transition: background .15s ease, transform .1s ease, box-shadow .15s ease;
+      box-shadow: 0 1px 3px rgba(37,99,235,.35);
+      min-height: 42px;
+      min-width: 110px;
     }
-    button:disabled { background: #9cb8e8; cursor: default; }
-    #results { margin-top: 32px; }
+    button#analyzeBtn:hover:not(:disabled) {
+      background: #1d4ed8;
+      box-shadow: 0 3px 10px rgba(37,99,235,.4);
+      transform: translateY(-1px);
+    }
+    button#analyzeBtn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 1px 3px rgba(37,99,235,.35);
+    }
+    button#analyzeBtn:disabled {
+      background: #93b4e8;
+      box-shadow: none;
+      cursor: default;
+      transform: none;
+    }
+
+    /* ── Status / error line ──────────────────────────────────────────────── */
+    #status { min-height: 22px; color: #57606a; font-size: 13px; }
+    .error-msg { color: #b91c1c; }
+
+    /* ── Results area ─────────────────────────────────────────────────────── */
+    #results { margin-top: 28px; }
+
+    /* Fade-in animation for panels appearing */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
     .panel {
       background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 24px;
+      border: 1px solid #e2e5ea;
+      border-radius: 12px;
+      padding: 22px 26px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.04);
+      animation: fadeUp .3s ease both;
     }
     .panel h2 {
-      margin: 0 0 14px;
-      font-size: 15px;
-      color: #1f2328;
+      margin: 0 0 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: .5px;
       border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 8px;
+      padding-bottom: 10px;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 6px 10px; background: #f7f8fa; border-bottom: 1px solid #e5e7eb; }
-    td { padding: 7px 10px; border-bottom: 1px solid #f0f2f4; vertical-align: top; }
-    tr:last-child td { border-bottom: none; }
-    .rank { font-weight: 700; color: #57606a; width: 36px; }
-    .score-badge {
-      display: inline-block;
-      padding: 1px 8px;
-      border-radius: 10px;
+
+    /* ── Suspects table ───────────────────────────────────────────────────── */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #f8f9fb;
+      border-bottom: 1px solid #e5e7eb;
       font-size: 11px;
       font-weight: 700;
-      background: #dbeafe;
-      color: #1d4ed8;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    td { padding: 9px 12px; border-bottom: 1px solid #f0f2f4; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background .12s ease; }
+    tbody tr:hover { background: #f9fafb; }
+    .rank { font-weight: 700; color: #9ca3af; width: 36px; }
+    .score-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
       white-space: nowrap;
     }
     .score-high  { background: #fee2e2; color: #b91c1c; }
     .score-med   { background: #fef3c7; color: #92400e; }
     .score-low   { background: #dbeafe; color: #1d4ed8; }
-    .file-name   { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; color: #0550ae; }
-    .reason      { color: #57606a; font-size: 12px; }
-    #mermaid-wrap { overflow-x: auto; }
-    .error-msg { color: #b91c1c; padding: 12px 0; }
-    /* AI Diagnosis panel */
-    #ai-diagnosis { margin-bottom: 24px; }
-    .diag-section { margin-bottom: 14px; }
-    .diag-section h3 { font-size: 13px; font-weight: 700; color: #57606a; text-transform: uppercase; letter-spacing: .4px; margin: 0 0 6px; }
-    .diag-content { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    .file-name   { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; color: #2563eb; word-break: break-all; }
+    .reason      { color: #6b7280; font-size: 12px; }
+
+    /* ── Mermaid graph ────────────────────────────────────────────────────── */
+    #mermaid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* ── AI Diagnosis panel ───────────────────────────────────────────────── */
+    #ai-diagnosis { margin-bottom: 20px; }
+    .diag-section { margin-bottom: 16px; }
+    .diag-section:last-child { margin-bottom: 0; }
+    .diag-section h3 {
+      font-size: 11px;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin: 0 0 8px;
+    }
+    .diag-content {
+      background: #f8f9fb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.65;
+      transition: opacity .2s ease;
+    }
     .diag-loading { color: #57606a; font-size: 13px; }
     .diag-error   { color: #b91c1c; font-size: 13px; }
+
+    /* ── Spinner ──────────────────────────────────────────────────────────── */
     .spinner {
       display: inline-block;
-      width: 16px; height: 16px;
-      border: 2px solid #c4d4e9;
+      width: 15px; height: 15px;
+      border: 2px solid #d1d5db;
       border-top-color: #3b82d4;
       border-radius: 50%;
       animation: spin .7s linear infinite;
@@ -220,8 +378,8 @@ const HTML = /* html */`<!DOCTYPE html>
       margin-right: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #status { margin-top: 12px; min-height: 20px; color: #57606a; font-size: 13px; }
-    /* Skeleton / shimmer */
+
+    /* ── Skeleton / shimmer ───────────────────────────────────────────────── */
     @keyframes shimmer {
       0%   { background-position: -600px 0; }
       100% { background-position:  600px 0; }
@@ -229,30 +387,61 @@ const HTML = /* html */`<!DOCTYPE html>
     .skeleton-line {
       display: inline-block;
       border-radius: 4px;
-      background: linear-gradient(90deg, #e5e7eb 25%, #f0f2f4 50%, #e5e7eb 75%);
+      background: linear-gradient(90deg, #e9eaec 25%, #f3f4f6 50%, #e9eaec 75%);
       background-size: 600px 100%;
       animation: shimmer 1.4s ease-in-out infinite;
     }
     .sk-rank  { width: 18px;  height: 12px; }
     .sk-file  { width: 220px; height: 12px; }
-    .sk-score { width: 48px;  height: 18px; border-radius: 10px; }
+    .sk-score { width: 52px;  height: 18px; border-radius: 10px; }
     .sk-reason-a { width: 180px; height: 11px; margin-bottom: 4px; }
     .sk-reason-b { width: 120px; height: 11px; }
+
+    /* ── Responsive ───────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .nav-bar { padding: 0 16px; }
+      .hero { padding: 36px 20px 32px; }
+      main { margin: 20px auto; padding: 0 14px; }
+      .form-card { padding: 20px 16px; }
+      .panel { padding: 18px 16px; }
+      .form-footer { flex-direction: column; align-items: stretch; }
+      button#analyzeBtn { width: 100%; justify-content: center; }
+      .sk-file { width: 140px; }
+    }
   </style>
 </head>
 <body>
-  <header>🐛 Bug Tracer</header>
+  <!-- Nav bar -->
+  <div class="nav-bar">
+    <div class="nav-logo">🐛</div>
+    Bug Tracer
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Trace Your <span>Codebase</span></h1>
+    <p>Point Bug Tracer at any local repository, describe what went wrong, and it surfaces the files most likely responsible — ranked by relevance.</p>
+    <div class="lang-badge">
+      Supports:&nbsp;<span>JavaScript</span>&nbsp;·&nbsp;<span>TypeScript</span>&nbsp;·&nbsp;<span>Python</span>
+    </div>
+  </div>
+
   <main>
-    <div class="field">
-      <label for="repoPath">Repository path</label>
-      <input type="text" id="repoPath" placeholder="/absolute/path/to/your/repo" spellcheck="false">
+    <!-- Input form -->
+    <div class="form-card">
+      <div class="field">
+        <label for="repoPath">Repository path</label>
+        <input type="text" id="repoPath" placeholder="/absolute/path/to/your/repo" spellcheck="false" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="bugDesc">Bug description</label>
+        <textarea id="bugDesc" placeholder="Describe the bug — e.g. &quot;payments fail when user has no saved card&quot; or &quot;login throws 500 on empty password&quot;"></textarea>
+      </div>
+      <div class="form-footer">
+        <button id="analyzeBtn" onclick="analyze()">Analyze</button>
+        <div id="status"></div>
+      </div>
     </div>
-    <div class="field">
-      <label for="bugDesc">Bug description</label>
-      <textarea id="bugDesc" placeholder="Describe the bug — e.g. &quot;payments fail when user has no saved card&quot; or &quot;login throws 500 on empty password&quot;"></textarea>
-    </div>
-    <button id="analyzeBtn" onclick="analyze()">Analyze</button>
-    <div id="status"></div>
     <div id="results"></div>
   </main>
 
@@ -278,10 +467,10 @@ const HTML = /* html */`<!DOCTYPE html>
       for (let i = 0; i < 6; i++) rows += skRow(i);
       return '<div class="panel">'
         + '<h2>Suspect Files</h2>'
-        + '<table>'
+        + '<div class="table-scroll"><table>'
         + '<thead><tr><th class="rank">#</th><th>File</th><th>Score</th><th>Reason</th></tr></thead>'
         + '<tbody>' + rows + '</tbody>'
-        + '</table>'
+        + '</table></div>'
         + '</div>';
     }
 
@@ -333,9 +522,9 @@ const HTML = /* html */`<!DOCTYPE html>
 
       // ── Suspects panel ──────────────────────────────────────────────────────
       if (!suspects || suspects.length === 0) {
-        html += '<div class="panel"><h2>Suspect Files</h2><p style="color:#57606a">No matching files found. Try a more descriptive bug report.</p></div>';
+        html += '<div class="panel"><h2>Suspect Files</h2><p style="color:#6b7280">No matching files found. Try a more descriptive bug report.</p></div>';
       } else {
-        html += '<div class="panel"><h2>Suspect Files</h2><table>';
+        html += '<div class="panel"><h2>Suspect Files</h2><div class="table-scroll"><table>';
         html += '<thead><tr><th class="rank">#</th><th>File</th><th>Score</th><th>Reason</th></tr></thead><tbody>';
         suspects.slice(0, 20).forEach((s, i) => {
           const cls = scoreCls(s.score);
@@ -346,7 +535,7 @@ const HTML = /* html */`<!DOCTYPE html>
           html += '<td class="reason">' + escHtml(s.reason) + '</td>';
           html += '</tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table></div></div>';
       }
 
       // ── AI Diagnosis panel ──────────────────────────────────────────────────
@@ -354,7 +543,7 @@ const HTML = /* html */`<!DOCTYPE html>
 
       // ── Mermaid graph panel ─────────────────────────────────────────────────
       const graphSubtitle = graphTrimmed
-        ? '<p style="color:#57606a;font-size:12px;margin:0 0 10px">Showing top 30 most-connected nodes of ' + rawNodeCount + ' total (graph trimmed for readability).</p>'
+        ? '<p style="color:#6b7280;font-size:12px;margin:0 0 12px">Showing top 30 most-connected nodes of ' + rawNodeCount + ' total (graph trimmed for readability).</p>'
         : '';
       html += '<div class="panel"><h2>Dependency Graph</h2>' + graphSubtitle + '<div id="mermaid-wrap"><div class="mermaid" id="mermaid-graph"></div></div></div>';
 
