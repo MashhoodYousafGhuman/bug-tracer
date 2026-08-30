@@ -283,7 +283,7 @@ ROOT CAUSE:
 <one paragraph citing specific lines from the code above>
 
 SUGGESTED PATCH:
-<concrete code change referencing real line numbers and file names>
+Show the COMPLETE corrected version of the function (not just the changed lines, not a verbal description) as a single, complete, ready-to-copy code block that a developer could directly use to replace the original function. Include the full function signature, docstring if present, and all logic — not a truncated excerpt.
 
 SUGGESTED TEST:
 <a short test case or test strategy to verify the fix>`;
