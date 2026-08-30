@@ -504,6 +504,7 @@ const HTML = /* html */`<!DOCTYPE html>
         window._lastBugDesc  = bugDescription;
         renderResults(data.suspects, data.mermaid, data.graphTrimmed, data.rawNodeCount);
       } catch (err) {
+        out.innerHTML = '';
         status.innerHTML = '<span class="error-msg">Error: ' + escHtml(err.message) + '</span>';
       } finally {
         btn.disabled = false;
