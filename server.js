@@ -113,7 +113,7 @@ app.get('/', (_req, res) => {
 // ---------------------------------------------------------------------------
 // HTML (self-contained, no external dependencies except Mermaid CDN)
 // ---------------------------------------------------------------------------
-const HTML = /* html */`<!DOCTYPE html>
+const HTML = /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -228,7 +228,7 @@ const HTML = /* html */`<!DOCTYPE html>
     }
     .sidebar-clear-btn a {
       font-size: 11px;
-      color: #3d3530;
+      color: #d6cbc3;
       text-decoration: none;
       cursor: pointer;
       transition: color .15s ease;
